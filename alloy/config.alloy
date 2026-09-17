@@ -1,0 +1,142 @@
+// ─────────────────────────────────────────────────────────────────────
+// Grafana Alloy: the single collection agent of the stack.
+//
+//   1. Container logs  : Docker API → parse → Loki
+//   2. OTLP traces     : apps + Traefik → Tempo
+//   3. OTLP metrics    : apps → Prometheus (remote write)
+//   4. OTLP logs       : apps (optional) → Loki native OTLP endpoint
+//
+// UI (not exposed): http://alloy:12345
+// ─────────────────────────────────────────────────────────────────────
+
+// ═══════════════════════ 1. Container logs ═══════════════════════════
+
+discovery.docker "containers" {
+	host             = "tcp://socket-proxy:2375"
+	refresh_interval = "15s"
+}
+
+discovery.relabel "containers" {
+	targets = discovery.docker.containers.targets
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/(.*)"
+		target_label  = "container"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+		target_label  = "service_name"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+		target_label  = "project"
+	}
+
+	// Opt-out: add the label logging=false to a container to skip it.
+	rule {
+		source_labels = ["__meta_docker_container_label_logging"]
+		regex         = "false"
+		action        = "drop"
+	}
+}
+
+loki.source.docker "containers" {
+	host          = "tcp://socket-proxy:2375"
+	targets       = discovery.docker.containers.targets
+	relabel_rules = discovery.relabel.containers.rules
+	forward_to    = [loki.process.containers.receiver]
+}
+
+loki.process "containers" {
+	// JSON logs: pull the level and the trace id, whatever the field name.
+	stage.json {
+		expressions = {
+			level    = "level || severity || lvl || log_level",
+			trace_id = "trace_id || traceId || TraceId || traceID",
+		}
+	}
+
+	// Low-cardinality value → indexed label.
+	stage.labels {
+		values = {level = ""}
+	}
+
+	// High-cardinality value → structured metadata (searchable, not indexed).
+	stage.structured_metadata {
+		values = {trace_id = ""}
+	}
+
+	forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+	endpoint {
+		url = "http://loki:3100/loki/api/v1/push"
+	}
+}
+
+// ═══════════════════════ 2-4. OpenTelemetry ══════════════════════════
+
+otelcol.receiver.otlp "default" {
+	grpc {
+		endpoint = "0.0.0.0:4317"
+	}
+
+	http {
+		endpoint = "0.0.0.0:4318"
+	}
+
+	output {
+		traces  = [otelcol.processor.memory_limiter.default.input]
+		metrics = [otelcol.processor.memory_limiter.default.input]
+		logs    = [otelcol.processor.memory_limiter.default.input]
+	}
+}
+
+otelcol.processor.memory_limiter "default" {
+	check_interval = "1s"
+	limit          = "400MiB"
+
+	output {
+		traces  = [otelcol.processor.batch.default.input]
+		metrics = [otelcol.processor.batch.default.input]
+		logs    = [otelcol.processor.batch.default.input]
+	}
+}
+
+otelcol.processor.batch "default" {
+	output {
+		traces  = [otelcol.exporter.otlp.tempo.input]
+		metrics = [otelcol.exporter.prometheus.default.input]
+		logs    = [otelcol.exporter.otlphttp.loki.input]
+	}
+}
+
+otelcol.exporter.otlp "tempo" {
+	client {
+		endpoint = "tempo:4317"
+
+		tls {
+			insecure = true
+		}
+	}
+}
+
+otelcol.exporter.prometheus "default" {
+	forward_to = [prometheus.remote_write.default.receiver]
+}
+
+prometheus.remote_write "default" {
+	endpoint {
+		url = "http://prometheus:9090/api/v1/write"
+	}
+}
+
+otelcol.exporter.otlphttp "loki" {
+	client {
+		endpoint = "http://loki:3100/otlp"
+	}
+}

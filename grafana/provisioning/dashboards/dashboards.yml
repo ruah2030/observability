@@ -1,0 +1,14 @@
+apiVersion: 1
+
+# Drop any dashboard JSON into grafana/dashboards/ — it appears in Grafana
+# within 30 seconds, in the "Observability" folder.
+providers:
+  - name: observability
+    folder: Observability
+    type: file
+    disableDeletion: false
+    allowUiUpdates: true
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: true

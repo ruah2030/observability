@@ -1,0 +1,30 @@
+groups:
+  - name: containers
+    rules:
+      - alert: ContainerMemoryNearLimit
+        expr: |
+          container_memory_working_set_bytes{name!=""}
+            / (container_spec_memory_limit_bytes{name!=""} > 0) > 0.90
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Container {{ $labels.name }} uses more than 90% of its memory limit"
+          description: "Usage: {{ $value | humanizePercentage }}. It may be OOM-killed."
+
+      - alert: ContainerCpuThrottled
+        expr: |
+          rate(container_cpu_cfs_throttled_periods_total{name!=""}[5m])
+            / rate(container_cpu_cfs_periods_total{name!=""}[5m]) > 0.25
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Container {{ $labels.name }} is CPU-throttled"
+          description: "{{ $value | humanizePercentage }} of CPU periods are throttled."
+
+      - alert: ContainerDisappeared
+        expr: time() - container_last_seen{name!=""} > 120
+        for: 1m
+        labels: { severity: warning }
+        annotations:
+          summary: "Container {{ $labels.name }} has not been seen for 2 minutes"
+          description: "It stopped, crashed or was removed."

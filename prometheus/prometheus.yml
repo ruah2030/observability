@@ -1,0 +1,82 @@
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    stack: observability
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  # ─── The stack itself ───────────────────────────────────────────────
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: alertmanager
+    static_configs:
+      - targets: ["alertmanager:9093"]
+
+  - job_name: traefik
+    static_configs:
+      - targets: ["traefik:8082"]
+
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+
+  - job_name: grafana
+    static_configs:
+      - targets: ["grafana:3000"]
+
+  - job_name: loki
+    static_configs:
+      - targets: ["loki:3100"]
+
+  - job_name: tempo
+    static_configs:
+      - targets: ["tempo:3200"]
+
+  - job_name: alloy
+    static_configs:
+      - targets: ["alloy:12345"]
+
+  # ─── Your applications: automatic discovery through Docker labels ────
+  #   prometheus.scrape=true   (required)
+  #   prometheus.port=3000     (required)
+  #   prometheus.path=/metrics (optional, default /metrics)
+  # The container must be attached to the "observability" network.
+  - job_name: docker-apps
+    docker_sd_configs:
+      - host: tcp://socket-proxy:2375
+        refresh_interval: 30s
+    relabel_configs:
+      - source_labels: [__meta_docker_container_label_prometheus_scrape]
+        regex: "true"
+        action: keep
+      - source_labels: [__meta_docker_network_name]
+        regex: observability
+        action: keep
+      - source_labels: [__meta_docker_network_ip, __meta_docker_container_label_prometheus_port]
+        separator: ":"
+        target_label: __address__
+      - source_labels: [__meta_docker_container_label_prometheus_path]
+        regex: (.+)
+        target_label: __metrics_path__
+      - source_labels: [__meta_docker_container_name]
+        regex: /(.*)
+        target_label: container
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: service
+      - source_labels: [__meta_docker_container_label_com_docker_compose_project]
+        target_label: project

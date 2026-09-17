@@ -1,0 +1,35 @@
+# Template rendered by scripts/setup.sh into alertmanager.yml (git-ignored).
+# Alertmanager does not expand environment variables itself.
+global:
+  resolve_timeout: 5m
+  smtp_smarthost: "__SMTP_HOST__"
+  smtp_from: "__SMTP_FROM__"
+  smtp_auth_username: "__SMTP_USER__"
+  smtp_auth_password_file: /etc/alertmanager/secrets/smtp_password
+  smtp_require_tls: true
+
+route:
+  receiver: email
+  group_by: [alertname, severity]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers: [severity="critical"]
+      receiver: email
+      repeat_interval: 1h
+    - matchers: [severity="info"]
+      receiver: "null"
+
+inhibit_rules:
+  # A critical alert silences the matching warning.
+  - source_matchers: [severity="critical"]
+    target_matchers: [severity="warning"]
+    equal: [alertname, instance]
+
+receivers:
+  - name: email
+    email_configs:
+      - to: "__ALERT_EMAIL_TO__"
+        send_resolved: true
+  - name: "null"

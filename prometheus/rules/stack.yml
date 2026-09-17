@@ -1,0 +1,34 @@
+groups:
+  - name: stack
+    rules:
+      - alert: TargetDown
+        expr: up == 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Scrape target {{ $labels.job }} ({{ $labels.instance }}) is down"
+          description: "Prometheus cannot reach it for 5 minutes."
+
+      - alert: PrometheusConfigReloadFailed
+        expr: prometheus_config_last_reload_successful == 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Prometheus configuration reload failed"
+          description: "The running configuration is the previous one. Check prometheus.yml."
+
+      - alert: AlertmanagerNotificationsFailing
+        expr: rate(alertmanager_notifications_failed_total[10m]) > 0
+        for: 10m
+        labels: { severity: critical }
+        annotations:
+          summary: "Alertmanager cannot deliver notifications through {{ $labels.integration }}"
+          description: "Alerts are firing but nobody receives them. Check SMTP settings."
+
+      - alert: PrometheusStorageNearRetentionSize
+        expr: prometheus_tsdb_storage_blocks_bytes / prometheus_tsdb_retention_limit_bytes > 0.90
+        for: 30m
+        labels: { severity: info }
+        annotations:
+          summary: "Prometheus uses more than 90% of its retention size"
+          description: "Oldest data will be dropped earlier than the time retention."

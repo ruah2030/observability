@@ -1,0 +1,30 @@
+groups:
+  - name: traefik
+    rules:
+      - alert: TraefikHigh5xxRate
+        expr: |
+          sum by (service) (rate(traefik_service_requests_total{code=~"5.."}[5m]))
+            / sum by (service) (rate(traefik_service_requests_total[5m])) > 0.05
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "More than 5% of 5xx responses on {{ $labels.service }}"
+          description: "Error ratio: {{ $value | humanizePercentage }}."
+
+      - alert: TraefikHighLatencyP95
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le, service) (rate(traefik_service_request_duration_seconds_bucket[5m]))) > 1
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "p95 latency above 1s on {{ $labels.service }}"
+          description: "p95: {{ $value | humanizeDuration }}."
+
+      - alert: TraefikCertificateExpiringSoon
+        expr: (min by (cn) (traefik_tls_certs_not_after) - time()) / 86400 < 14
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: "TLS certificate {{ $labels.cn }} expires in less than 14 days"
+          description: "Days left: {{ $value | humanize }}. Check ACME renewal in Traefik logs."

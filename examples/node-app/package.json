@@ -1,0 +1,16 @@
+{
+  "name": "node-app-example",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --require @opentelemetry/auto-instrumentations-node/register server.js"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/auto-instrumentations-node": "^0.80.0",
+    "express": "^5.2.1",
+    "pino": "^10.3.1"
+  }
+}
